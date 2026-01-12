@@ -9,6 +9,7 @@ use App\Http\Controllers\NewsController;
 use App\Http\Controllers\PersembahanController;
 use App\Http\Controllers\RekapPersembahanController;
 use App\Http\Controllers\WelcomeController;
+use App\Http\Controllers\NotificationController;
 
 // Redirect root ke login
 Route::get('/admin', function () {
@@ -83,4 +84,9 @@ Route::prefix('admin')->middleware('admin.auth')->group(function () {
             'update' => 'admin.rekap.update',
             'destroy' => 'admin.rekap.destroy',
         ]);
+    // Route untuk menampilkan form
+    Route::get('/notifikasi', [NotificationController::class, 'create'])->name('admin.notifikasi.create');
+    
+    // Route untuk memproses pengiriman form
+    Route::post('/notifikasi/send', [NotificationController::class, 'send'])->name('admin.notifikasi.send');
 });

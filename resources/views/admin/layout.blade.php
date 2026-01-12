@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/png" href="{{ asset('gbtgalilea.png') }}">
     <title>@yield('title') - Manajemen Gereja</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -82,6 +83,10 @@
                 <a href="{{ route('admin.rekap.index') }}" class="flex items-center px-4 py-3 text-white rounded-lg hover:bg-purple-600 transition {{ request()->routeIs('admin.rekap.*') ? 'bg-purple-600' : '' }}">
                     <span class="mr-3">📋</span>
                     <span class="font-medium">Rekap Persembahan</span>
+                </a>
+                <a href="{{ route('admin.notifikasi.create') }}" class="flex items-center px-4 py-3 text-white rounded-lg hover:bg-purple-600 transition {{ request()->routeIs('admin.notifikasi.*') ? 'bg-purple-600' : '' }}">
+                    <span class="mr-3">📋</span>
+                    <span class="font-medium">Notifikasi</span>
                 </a>
             </nav>
             

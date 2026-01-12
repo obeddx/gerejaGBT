@@ -68,62 +68,212 @@ class YouTubeSummarizerController extends Controller
     /**
      * ======================================================================
      * FUNGSI BARU: Mengambil transkrip menggunakan TranscriptListFetcher
+     * DENGAN ENHANCED DEBUGGING
      * ======================================================================
      */
     private function fetchAndFormatTranscript($videoId)
     {
         try {
-            Log::info("Mencoba mengambil transkrip untuk $videoId menggunakan TranscriptListFetcher.");
-
-            // 1. Inisialisasi Klien HTTP dan Factories (Sesuai Dokumentasi)
-            $http_client = new Client(['timeout' => 30]); // Set timeout 30 detik
-            $request_factory = new HttpFactory();
-            $stream_factory = new HttpFactory(); 
+            // === STEP 1: LOG ENVIRONMENT INFO ===
+            Log::info("=== START FETCH TRANSCRIPT DEBUG ===");
+            Log::info("Video ID: $videoId");
+            Log::info("PHP Version: " . PHP_VERSION);
+            Log::info("Server IP: " . ($_SERVER['SERVER_ADDR'] ?? 'unknown'));
+            Log::info("allow_url_fopen: " . ini_get('allow_url_fopen'));
+            Log::info("max_execution_time: " . ini_get('max_execution_time'));
             
-            $fetcher = new TranscriptListFetcher($http_client, $request_factory, $stream_factory);
+            // Cek ekstensi yang diperlukan
+            $extensions = [
+                'curl' => extension_loaded('curl'),
+                'openssl' => extension_loaded('openssl'),
+                'json' => extension_loaded('json'),
+                'mbstring' => extension_loaded('mbstring'),
+            ];
+            Log::info("PHP Extensions: " . json_encode($extensions));
             
-            // 2. Fetch Transcript List
-            $transcript_list = $fetcher->fetch($videoId);
+            // === STEP 2: TEST BASIC CONNECTIVITY ===
+            Log::info("Testing YouTube connectivity...");
+            try {
+                $testUrl = "https://www.youtube.com/watch?v={$videoId}";
+                $ch = curl_init($testUrl);
+                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+                curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+                curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+                
+                $result = curl_exec($ch);
+                $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                $curlError = curl_error($ch);
+                $curlErrno = curl_errno($ch);
+                curl_close($ch);
+                
+                Log::info("YouTube Connectivity Test:", [
+                    'http_code' => $httpCode,
+                    'curl_error' => $curlError,
+                    'curl_errno' => $curlErrno,
+                    'response_length' => strlen($result),
+                    'success' => $httpCode == 200
+                ]);
+                
+                if ($httpCode != 200) {
+                    Log::warning("YouTube tidak dapat diakses. HTTP Code: $httpCode");
+                }
+            } catch (\Exception $e) {
+                Log::error("Connectivity test failed: " . $e->getMessage());
+            }
 
-            // 3. Cari Transkrip (Prioritas: ID, EN, atau yang pertama)
+            // === STEP 3: INITIALIZE TRANSCRIPT FETCHER ===
+            Log::info("Initializing TranscriptListFetcher...");
+            
+            try {
+                $http_client = new Client([
+                    'timeout' => 30,
+                    'connect_timeout' => 10,
+                    'verify' => true, // SSL verification
+                    'http_errors' => true,
+                    'headers' => [
+                        'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                    ]
+                ]);
+                
+                $request_factory = new HttpFactory();
+                $stream_factory = new HttpFactory(); 
+                
+                $fetcher = new TranscriptListFetcher($http_client, $request_factory, $stream_factory);
+                Log::info("TranscriptListFetcher initialized successfully");
+                
+            } catch (\Exception $e) {
+                Log::error("Failed to initialize TranscriptListFetcher", [
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString()
+                ]);
+                throw $e;
+            }
+            
+            // === STEP 4: FETCH TRANSCRIPT LIST ===
+            Log::info("Fetching transcript list from YouTube...");
+            
+            try {
+                $transcript_list = $fetcher->fetch($videoId);
+                Log::info("Transcript list fetched successfully");
+                
+                // Log available languages
+                $available_codes = $transcript_list->getAvailableLanguageCodes();
+                Log::info("Available language codes: " . json_encode($available_codes));
+                
+            } catch (\GuzzleHttp\Exception\RequestException $e) {
+                Log::error("Guzzle Request Exception", [
+                    'message' => $e->getMessage(),
+                    'code' => $e->getCode(),
+                    'has_response' => $e->hasResponse(),
+                    'response' => $e->hasResponse() ? $e->getResponse()->getBody()->getContents() : null,
+                ]);
+                throw $e;
+            } catch (\Exception $e) {
+                Log::error("Failed to fetch transcript list", [
+                    'error_class' => get_class($e),
+                    'error_message' => $e->getMessage(),
+                    'error_code' => $e->getCode(),
+                    'trace' => $e->getTraceAsString()
+                ]);
+                throw $e;
+            }
+
+            // === STEP 5: FIND TRANSCRIPT ===
+            Log::info("Finding transcript in preferred languages...");
+            
             $language_codes = ['id', 'en']; // Prioritaskan ID (Indonesia) dan EN (English)
             
             try {
-                 $transcript = $transcript_list->findTranscript($language_codes);
+                $transcript = $transcript_list->findTranscript($language_codes);
+                Log::info("Transcript found in preferred languages");
+                
             } catch (TranscriptNotFoundException $e) {
-                // Coba ambil transkrip yang tersedia, auto-generated atau bahasa lain
+                Log::warning("Preferred transcript not found, trying alternatives");
+                
+                // Coba ambil transkrip yang tersedia
                 $available_codes = $transcript_list->getAvailableLanguageCodes();
                 if (empty($available_codes)) {
                     throw new TranscriptNotFoundException("Tidak ada transkrip yang tersedia di video ini.");
                 }
-                // Ambil transkrip pertama yang tersedia
-                $transcript = $transcript_list->findTranscript([$available_codes[0]]); 
                 
+                Log::info("Using fallback language: " . $available_codes[0]);
+                $transcript = $transcript_list->findTranscript([$available_codes[0]]); 
             }
             
-            // 4. Fetch Teks Transkrip
-            $rawTranscript = $transcript->fetch();
+            // === STEP 6: FETCH TRANSCRIPT TEXT ===
+            Log::info("Fetching transcript text...");
+            
+            try {
+                $rawTranscript = $transcript->fetch();
+                Log::info("Raw transcript fetched", [
+                    'lines_count' => count($rawTranscript),
+                    'first_line_sample' => isset($rawTranscript[0]) ? substr($rawTranscript[0]['text'] ?? '', 0, 50) : 'N/A'
+                ]);
+                
+            } catch (\Exception $e) {
+                Log::error("Failed to fetch transcript text", [
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString()
+                ]);
+                throw $e;
+            }
 
             if (empty($rawTranscript)) {
                 Log::error('Transkrip yang dikembalikan dari library kosong.');
                 return ['error' => 'Video ini tidak memiliki subtitle/transkrip (teks kosong).'];
             }
 
-            // 5. Gabungkan array of lines menjadi satu string panjang
+            // === STEP 7: FORMAT TRANSCRIPT ===
+            Log::info("Formatting transcript...");
             $transcriptText = '';
             foreach ($rawTranscript as $line) {
-                // Tambahkan teks setiap baris, dipisahkan oleh spasi
                 $transcriptText .= $line['text'] . ' ';
             }
             
-            Log::info('Berhasil mendapatkan transkrip, panjang: ' . strlen($transcriptText) . ' char.');
+            $finalLength = strlen(trim($transcriptText));
+            Log::info("=== TRANSCRIPT FETCH SUCCESS ===", [
+                'final_length' => $finalLength,
+                'character_count' => $finalLength,
+                'word_count_estimate' => str_word_count($transcriptText)
+            ]);
+            
             return ['transcript' => trim($transcriptText)];
 
         } catch (TranscriptNotFoundException $e) {
-            Log::error('TranscriptNotFoundException: ' . $e->getMessage());
+            Log::error('=== TranscriptNotFoundException ===', [
+                'message' => $e->getMessage(),
+                'video_id' => $videoId
+            ]);
             return ['error' => 'Video ini tidak memiliki subtitle/transkrip yang tersedia.'];
+            
+        } catch (\GuzzleHttp\Exception\ConnectException $e) {
+            Log::error('=== Guzzle Connection Exception ===', [
+                'message' => $e->getMessage(),
+                'video_id' => $videoId,
+                'hint' => 'Kemungkinan firewall memblokir atau timeout'
+            ]);
+            return ['error' => 'Tidak dapat terhubung ke YouTube. Silakan coba lagi nanti.'];
+            
+        } catch (\GuzzleHttp\Exception\RequestException $e) {
+            Log::error('=== Guzzle Request Exception ===', [
+                'message' => $e->getMessage(),
+                'code' => $e->getCode(),
+                'video_id' => $videoId,
+                'has_response' => $e->hasResponse()
+            ]);
+            return ['error' => 'Terjadi kesalahan saat mengambil transkrip dari YouTube.'];
+            
         } catch (\Exception $e) {
-            Log::error('Error fetchAndFormatTranscript: ' . $e->getMessage());
+            Log::error('=== General Exception ===', [
+                'class' => get_class($e),
+                'message' => $e->getMessage(),
+                'code' => $e->getCode(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'video_id' => $videoId,
+                'trace' => $e->getTraceAsString()
+            ]);
             return ['error' => 'Terjadi kesalahan saat mengambil transkrip: ' . $e->getMessage()];
         }
     }
@@ -190,6 +340,58 @@ class YouTubeSummarizerController extends Controller
         } catch (\Exception $e) {
             Log::error('Error summarizeWithGemini: ' . $e->getMessage());
             return ['error' => 'Terjadi kesalahan saat membuat rangkuman: ' . $e->getMessage()];
+        }
+    }
+    
+    /**
+     * ======================================================================
+     * ENDPOINT UNTUK DEBUG - HAPUS SETELAH DEBUGGING SELESAI
+     * ======================================================================
+     */
+    public function debugEnvironment()
+    {
+        return response()->json([
+            'php_version' => PHP_VERSION,
+            'server_ip' => $_SERVER['SERVER_ADDR'] ?? 'unknown',
+            'allow_url_fopen' => ini_get('allow_url_fopen'),
+            'curl_version' => function_exists('curl_version') ? curl_version() : 'not available',
+            'openssl_version' => OPENSSL_VERSION_TEXT,
+            'max_execution_time' => ini_get('max_execution_time'),
+            'memory_limit' => ini_get('memory_limit'),
+            'extensions' => [
+                'curl' => extension_loaded('curl'),
+                'openssl' => extension_loaded('openssl'),
+                'json' => extension_loaded('json'),
+                'mbstring' => extension_loaded('mbstring'),
+            ],
+            'youtube_test' => $this->testYouTubeConnection(),
+        ]);
+    }
+    
+    private function testYouTubeConnection()
+    {
+        try {
+            $ch = curl_init('https://www.youtube.com');
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+            
+            $result = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $error = curl_error($ch);
+            curl_close($ch);
+            
+            return [
+                'success' => $httpCode == 200,
+                'http_code' => $httpCode,
+                'error' => $error,
+                'response_length' => strlen($result)
+            ];
+        } catch (\Exception $e) {
+            return [
+                'success' => false,
+                'error' => $e->getMessage()
+            ];
         }
     }
 }

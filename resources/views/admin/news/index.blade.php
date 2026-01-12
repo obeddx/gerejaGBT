@@ -45,7 +45,7 @@
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{{ $newss->firstItem() + $index }}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
                             @if ($item->gambar)
-                                <img src="{{ Storage::url($item->gambar) }}" alt="{{ $item->judul }}" class="w-16 h-16 object-cover rounded-lg shadow">
+                                <img src="{{ asset('public/' . $item->gambar) }}" alt="{{ $item->judul }}" class="w-16 h-16 object-cover rounded-lg shadow">
                             @else
                                 <span class="text-xs text-gray-400">T/A</span>
                             @endif
@@ -68,7 +68,7 @@
                                 data-keterangan="{{ $item->keterangan }}"
                                 data-tanggal="{{ $item->tanggal ? \Carbon\Carbon::parse($item->tanggal)->format('Y-m-d') : '' }}"
                                 data-jam="{{ $item->jam }}"
-                                data-image_url="{{ $item->gambar ? Storage::url($item->gambar) : '' }}"
+                                data-image_url="{{ $item->gambar ? asset('public/' . $item->gambar) : '' }}"
                                 data-url="{{ route('admin.news.update', $item->id_news) }}"
                             >
                                 ✏️ Edit

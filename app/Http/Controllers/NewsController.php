@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Models\News;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage; // <-- TAMBAHKAN IMPORT INI
 
 class NewsController extends Controller
 {
@@ -14,11 +13,6 @@ class NewsController extends Controller
         return view('admin.news.index', compact('newss'));
     }
 
-    /**
-     * Metode create() tidak diperlukan lagi (pakai modal)
-     */
-    // public function create() ...
-
     public function store(Request $request)
     {
         $request->validate([
@@ -27,27 +21,38 @@ class NewsController extends Controller
             'gambar' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
             'tanggal' => 'nullable|date',
             'jam' => 'nullable',
-            
         ]);
 
         $data = $request->all();
 
-        // --- Logika Handle Upload Image ---
+        // --- Upload Gambar ke public/uploads/news ---
         if ($request->hasFile('gambar')) {
-            $path = $request->file('gambar')->store('public/news');
-            $data['gambar'] = $path; // Simpan path-nya ke data
+            $file = $request->file('gambar');
+            
+            // Cek apakah folder exists, kalau tidak buat
+            $uploadPath = public_path('uploads/news');
+            if (!file_exists($uploadPath)) {
+                mkdir($uploadPath, 0755, true);
+            }
+            
+            $filename = time() . '_' . uniqid() . '.' . $file->getClientOriginalExtension();
+            
+            try {
+                // Pindahkan file ke public/uploads/news
+                $file->move($uploadPath, $filename);
+                
+                // Simpan path relatif ke database
+                $data['gambar'] = 'uploads/news/' . $filename;
+            } catch (\Exception $e) {
+                \Log::error('File upload failed: ' . $e->getMessage());
+                return redirect()->back()->with('error', 'Gagal upload gambar: ' . $e->getMessage());
+            }
         }
-        // --- End Logika ---
 
-        News::create($data); // Buat event dengan data yang sudah ada path gambarnya
+        News::create($data);
 
         return redirect()->route('admin.news.index')->with('success', 'Data news berhasil ditambahkan!');
     }
-
-    /**
-     * Metode edit() tidak diperlukan lagi (pakai modal)
-     */
-    // public function edit(Event $event) ...
 
     public function update(Request $request, News $news)
     {
@@ -61,33 +66,49 @@ class NewsController extends Controller
 
         $data = $request->all();
 
-        // --- Logika Handle Update Image ---
+        // --- Update Gambar ---
         if ($request->hasFile('gambar')) {
             // 1. Hapus gambar lama jika ada
-            if ($news->gambar) {
-                Storage::delete($news->gambar);
+            if ($news->gambar && file_exists(public_path($news->gambar))) {
+                unlink(public_path($news->gambar));
             }
             
             // 2. Upload gambar baru
-            $path = $request->file('gambar')->store('public/news');
-            $data['gambar'] = $path; // Simpan path baru ke data
+            $file = $request->file('gambar');
+            
+            // Cek apakah folder exists, kalau tidak buat
+            $uploadPath = public_path('uploads/news');
+            if (!file_exists($uploadPath)) {
+                mkdir($uploadPath, 0755, true);
+            }
+            
+            $filename = time() . '_' . uniqid() . '.' . $file->getClientOriginalExtension();
+            
+            try {
+                $file->move($uploadPath, $filename);
+                
+                // 3. Simpan path baru
+                $data['gambar'] = 'uploads/news/' . $filename;
+            } catch (\Exception $e) {
+                \Log::error('File upload failed: ' . $e->getMessage());
+                return redirect()->back()->with('error', 'Gagal upload gambar: ' . $e->getMessage());
+            }
         }
-        // --- End Logika ---
 
-        $news->update($data); // Update event
+        $news->update($data);
 
         return redirect()->route('admin.news.index')->with('success', 'Data News berhasil diupdate!');
     }
 
     public function destroy(News $news)
     {
-        // --- Logika Hapus Image ---
-        if ($news->gambar) {
-            Storage::delete($news->gambar);
+        // --- Hapus Gambar dari public ---
+        if ($news->gambar && file_exists(public_path($news->gambar))) {
+            unlink(public_path($news->gambar));
         }
-        // --- End Logika ---
 
         $news->delete();
+
         return redirect()->route('admin.news.index')->with('success', 'Data news berhasil dihapus!');
     }
 }

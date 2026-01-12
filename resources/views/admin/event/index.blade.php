@@ -44,7 +44,7 @@
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{{ $events->firstItem() + $index }}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
                             @if ($item->image)
-                                <img src="{{ Storage::url($item->image) }}" alt="{{ $item->nama_event }}" class="w-16 h-16 object-cover rounded-lg shadow">
+                                <img src="{{ asset('public/' . $item->image) }}" alt="{{ $item->nama_event }}" class="w-16 h-16 object-cover rounded-lg shadow">
                             @else
                                 <span class="text-xs text-gray-400">T/A</span>
                             @endif
@@ -59,7 +59,7 @@
                                 data-nama_event="{{ $item->nama_event }}"
                                 data-hari="{{ $item->hari }}"
                                 data-jam="{{ $item->jam }}"
-                                data-image_url="{{ $item->image ? Storage::url($item->image) : '' }}"
+                                data-image_url="{{ $item->image ? asset('public/' . $item->image) : '' }}"
                                 data-url="{{ route('admin.event.update', $item->id_event) }}"
                             >
                                 ✏️ Edit

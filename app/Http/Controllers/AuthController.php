@@ -23,8 +23,8 @@ class AuthController extends Controller
         ]);
 
         // Hardcoded credentials (ganti dengan database authentication jika diperlukan)
-        $username = 'admin';
-        $password = 'admin12345678';
+        $username = 'abrisam';
+        $password = '@abrisam12345678';
 
         if ($request->username === $username && $request->password === $password) {
             session(['admin_logged_in' => true, 'admin_username' => $username]);
